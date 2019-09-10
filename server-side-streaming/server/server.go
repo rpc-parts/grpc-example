@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -16,14 +17,32 @@ var users = map[int32]pb.UserResponse{
 	3: {Name: "hhkb", Age: 62},
 	4: {Name: "rfyiamcool", Age: 22},
 	5: {Name: "rui", Age: 23},
+	6: {Name: "emacs", Age: 25},
+	7: {Name: "leopold", Age: 21},
 }
 
 type serverSideStreamServer struct{}
 
 func (s *serverSideStreamServer) GetUserInfo(req *pb.UserRequest, stream pb.UserService_GetUserInfoServer) error {
-	for _, user := range users {
-		stream.Send(&user)
+	queue := make(chan pb.UserResponse, 10)
+	go func() {
+		for _, user := range users {
+			queue <- user
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
+	running := true
+	for running {
+		select {
+		case mesg := <-queue:
+			stream.Send(&mesg)
+		case <-stream.Context().Done():
+			log.Println("client active closed")
+			running = false
+		}
 	}
+
 	log.Printf("[RECEIVED REQUEST]: %v\n", req)
 	return nil
 }
