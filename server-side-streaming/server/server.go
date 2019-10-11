@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	pb "github.com/rfyiamcool/grpc-example/server-side-streaming/proto"
 )
@@ -24,6 +26,20 @@ var users = map[int32]pb.UserResponse{
 type serverSideStreamServer struct{}
 
 func (s *serverSideStreamServer) GetUserInfo(req *pb.UserRequest, stream pb.UserService_GetUserInfoServer) error {
+	reqHeader, _ := metadata.FromIncomingContext(stream.Context())
+	log.Printf("req header: %+v \n", reqHeader)
+
+	gen := func() metadata.MD {
+		md := metadata.Pairs("server-key1", "haha", "server-key2", fmt.Sprintf("%s", time.Now().String()))
+		return md
+	}
+
+	err := stream.SendHeader(gen())
+	if err != nil {
+		log.Printf("send header err: %+v", err.Error())
+		return err
+	}
+
 	queue := make(chan pb.UserResponse, 10)
 	go func() {
 		for _, user := range users {
@@ -37,6 +53,9 @@ func (s *serverSideStreamServer) GetUserInfo(req *pb.UserRequest, stream pb.User
 		select {
 		case mesg := <-queue:
 			stream.Send(&mesg)
+			// md := gen()
+			// stream.SendHeader(md)
+
 		case <-stream.Context().Done():
 			log.Println("client active closed")
 			running = false
